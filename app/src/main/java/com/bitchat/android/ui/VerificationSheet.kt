@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -14,7 +15,6 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.viewfinder.core.ImplementationMode
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -96,10 +96,14 @@ fun VerificationSheet(
     viewModel: ChatViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val errorInvalid = stringResource(R.string.verify_scan_error_invalid)
+    val errorPeerNotFound = stringResource(R.string.verify_scan_error_peer_not_found)
+
     if (!isPresented) return
 
     val accent = MaterialTheme.colorScheme.primary
-    
+
     var selectedTab by remember { mutableStateOf(0) } // 0 = My Code, 1 = Scan
     val nickname by viewModel.nickname.collectAsStateWithLifecycle()
     val npub = remember { viewModel.getCurrentNpub() }
@@ -165,7 +169,7 @@ fun VerificationSheet(
 
             // Content
             Crossfade(
-                targetState = selectedTab, 
+                targetState = selectedTab,
                 label = "VerificationTabCrossfade",
                 modifier = Modifier.weight(1f)
             ) { tab ->
@@ -179,18 +183,21 @@ fun VerificationSheet(
                         accent = accent,
                         onScan = { code ->
                             val qr = VerificationService.verifyScannedQR(code)
-                            if (qr != null && viewModel.beginQRVerification(qr)) {
-                                selectedTab = 0
+                            when {
+                                qr == null -> Toast.makeText(context, errorInvalid, Toast.LENGTH_SHORT).show()
+                                !viewModel.beginQRVerification(qr) -> Toast.makeText(context, errorPeerNotFound, Toast.LENGTH_SHORT).show()
+                                else -> selectedTab = 0
                             }
                         }
+
                     )
                 }
             }
-            
+
             // Unverify Action
             val peerID by viewModel.selectedPrivateChatPeer.collectAsStateWithLifecycle()
             val fingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
-            
+
             if (peerID != null) {
                 val fingerprint = viewModel.getMeshPeerFingerprint(peerID!!)
                 if (fingerprint != null && fingerprints.contains(fingerprint)) {
@@ -254,14 +261,14 @@ private fun MyQrTabContent(
         verticalArrangement = Arrangement.Top
     ) {
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         Text(
             text = stringResource(R.string.verify_my_qr_title),
             style = MaterialTheme.typography.titleMedium,
             fontFamily = BitchatFontFamily,
             color = accent
         )
-        
+
         Spacer(modifier = Modifier.height(32.dp))
 
         if (qrString.isNotBlank()) {
@@ -300,9 +307,9 @@ private fun MyQrTabContent(
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         // Helper text
         Text(
             text = stringResource(R.string.app_name).lowercase(),
@@ -321,7 +328,7 @@ private fun ScanTabContent(
     onScan: (String) -> Unit
 ) {
     val permissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -339,19 +346,19 @@ private fun ScanTabContent(
                 contentAlignment = Alignment.Center
             ) {
                 ScannerView(onScan = onScan)
-                
+
                 // Overlay border
                 Box(
                     modifier = Modifier
                         .size(280.dp)
                         .border(2.dp, accent.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 )
-                
+
                 // Corner accents for the overlay
                 Box(modifier = Modifier.size(260.dp)) {
                     // This could be drawn with Canvas for cooler effect, but simple border is cleaner for now
                 }
-                
+
                 Text(
                     text = stringResource(R.string.verify_scan_prompt_friend),
                     color = Color.White,
@@ -470,7 +477,6 @@ private fun ScannerView(
     surfaceRequest?.let { request ->
         CameraXViewfinder(
             surfaceRequest = request,
-            implementationMode = ImplementationMode.EMBEDDED,
             modifier = Modifier.fillMaxSize()
         )
     }
